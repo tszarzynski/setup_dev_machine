@@ -10,12 +10,10 @@ ANDROID_TOOLS_URL='https://dl.google.com/android/repository/sdk-tools-linux-4333
 ANDROID_INFO_UPDATED='2019-05-30'
 
 # See https://github.com/nvm-sh/nvm/blob/master/README.md#install--update-script
-NVM_SETUP_SCRIPT='https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh'
-NVM_INFO_UPDATED='2019-05-30'
+NVM_SETUP_SCRIPT='https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.1/install.sh'
+# See https://github.com/pyenv/pyenv-installer
+PYENV_SETUP_SCRIPT='https://pyenv.run'
 
-# See https://www.anaconda.com/distribution/#linux
-ANACONDA_SETUP_SCRIPT='https://repo.anaconda.com/archive/Anaconda3-2019.03-Linux-x86_64.sh'
-ANACONDA_INFO_UPDATED='2019-05-30'
 #-------------------------------------------------------------------------------
 
 USAGE='
@@ -46,22 +44,14 @@ android
 
 node
         Installs nvm and the latest version of node/npm.
-anaconda
-        Installs the anaconda data science package for python. Includes an
-        optimized version of python, pip, jupyter, and many packages used by the
-        scientific community.
-miniconda
-        Stripped version of anaconda that does not pre-install packages.
-pip
-        Installs pip for Python 3.
-
-Specifying the targets "vscode flutter node anaconda" constitutes a full install.
+pyenv
+        Installs Pyenv
 
 For information about the SettingsSync extension for VSCode, see
 https://marketplace.visualstudio.com/items?itemName=Shan.code-settings-sync.
 '
 
-ALL_TARGETS=(vscode flutter android node anaconda miniconda pip)
+ALL_TARGETS=(vscode flutter android node firebase pyenv)
 has_updated_sources=0
 
 # Utility functions
@@ -79,10 +69,10 @@ install_packages() {
   local len=${#to_install[@]}
   if [ $len -gt 0 ]; then
     if [ $has_updated_sources -eq 0 ]; then
-      sudo apt-get update
+      sudo apt update
       has_updated_sources=1
     fi
-    sudo apt-get -y install ${to_install[@]}
+    sudo apt install ${to_install[@]}
   fi
   return $len
 }
@@ -184,21 +174,6 @@ for target in "${targets[@]}"; do
   fi
 done
 
-# Validate workspace
-if [ -n "$workspace_dir" ]; then
-  if [ ! -d "$HOME/$workspace_dir" ]; then
-    mkdir "$HOME/$workspace_dir" || exit 1
-  fi
-  if [ -d "$HOME/$workspace_dir/.git" ]; then
-    echo "$HOME/$workspace_dir" already contains a git repository.
-    exit 1
-  fi
-  if [[ "$workspace_repo" != *".git" ]]; then
-    echo Invalid git remote "$workspace_repo"
-    exit 1
-  fi
-fi
-
 # Validate git config
 if [ -n "$git_config_name" ]; then
   if [[ "$git_config_email" != *"@"* ]]; then
@@ -220,11 +195,8 @@ declare -A installed
 installed[vscode]=$(command_exists code)
 installed[flutter]=$(command_exists flutter)
 installed[android]=$(command_exists sdkmanager)
-# installed[studio]=$(command_exists studio.sh)
+installed[pyenv]=$(command_exists pyenv)
 installed[node]=$(command_exists node)
-installed[anaconda]=$(command_exists anaconda)
-installed[miniconda]=$(path_contains miniconda)
-installed[pip]=$(command_exists pip3)
 if [ ! $force_install ]; then
   for target in "${targets[@]}"; do
     if [ ${installed[$target]} ]; then
@@ -258,7 +230,7 @@ if [ ${has_target[flutter]} ]; then
   "$install_dir/flutter/bin/flutter" --version
 
   install_packages lib32stdc++6 clang
-  [ $(command_exists make) ] || sudo apt-get -y install make
+  [ $(command_exists make) ] || sudo apt install make
 
   if [ ! $(path_contains "$install_dir/flutter/bin") ]; then
     export PATH="$PATH:$install_dir/flutter/bin:$install_dir/flutter/bin/cache/dart-sdk/bin:$HOME/.pub-cache/bin"
@@ -322,92 +294,28 @@ if [ ${has_target[node]} ]; then
   echo
   curl -o- "$NVM_SETUP_SCRIPT" | bash
 
-  export NVM_DIR="$HOME/.config"
-  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"                   # This loads nvm
-  [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" # This loads nvm bash_completion
-
   nvm install node
+fi
 
-  # Firebase tools
+# Firebase tools
+if [ ${has_target[firebase]} ]; then
+  echo
+  echo "======================================================="
+  echo "Installing Firebase tools"
+  echo "See https://github.com/nvm-sh/nvm/blob/master/README.md"
+  echo "======================================================="
+  echo
+
   npm install -g firebase-tools
 fi
 
-# Anaconda data science kit. Includes pip, spyder, jupyter, and many packages.
-if [ ${has_target[anaconda]} ]; then
-  echo
-  echo "================================"
-  echo "Installing Anaconda for Python 3"
-  echo "================================"
-  echo
-  install_packages wget
+# Pyenv
+if [ ${has_target[pyenv]} ]; then
+  install_packages sudo apt-get install -y make build-essential libssl-dev zlib1g-dev libbz2-dev \
+    libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev \
+    xz-utils tk-dev libffi-dev liblzma-dev python-openssl
 
-  wget "$ANACONDA_SETUP_SCRIPT" -O "$install_dir/anaconda.sh"
-  bash "$install_dir/anaconda.sh" -b -p "$install_dir/anaconda"
-  rm "$install_dir/anaconda.sh"
-
-  # Create a launcher icon for Spyder
-  if [ ! -d "$HOME/.local/share/applications" ]; then
-    mkdir "$HOME/.local/share/applications"
-  fi
-  # A copy of anaconda/share/applications/spyder3.desktop, but the
-  # exec is spyder, not spyder3.
-  cat <<EOF >"$HOME/.local/share/applications/spyder3.desktop"
-[Desktop Entry]
-Type=Application
-Version=1.0
-Name=Spyder3
-GenericName=Spyder3
-Comment=The Scientific Python Development Environment - Python 3
-Icon=spyder3
-TryExec=spyder
-Exec=spyder %F
-Terminal=false
-MimeType=text/x-python;
-Categories=Development;Science;IDE;Qt;
-Keywords=Development;Science;IDE;Qt;
-StartupNotify=true
-StartupWMClass=Spyder
-EOF
-
-  if [ ! -d "$HOME/.local/share/icons" ]; then
-    mkdir "$HOME/.local/share/icons"
-  fi
-  cp "$install_dir/anaconda/share/icons/spyder3.png" "$HOME/.local/share/icons/spyder3.png"
-
-  sudo update-desktop-database
-
-  if [ ! $(path_contains "$install_dir/anaconda") ]; then
-    export PATH="$PATH:$install_dir/anaconda/bin:$install_dir/anaconda/condabin"
-    path_changes+=":$install_dir/anaconda/bin:$install_dir/anaconda/condabin"
-  fi
-fi
-
-# Miniconda.
-if [ ${has_target[miniconda]} ]; then
-  echo
-  echo "================================="
-  echo "Installing Miniconda for Python 3"
-  echo "================================="
-  echo
-  install_packages wget
-  wget "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O "$install_dir/miniconda.sh"
-  bash "$install_dir/miniconda.sh" -b -p "$install_dir/miniconda"
-  rm "$install_dir/miniconda.sh"
-
-  if [ ! $(path_contains "$install_dir/miniconda") ]; then
-    export PATH="$PATH:$install_dir/miniconda/bin:$install_dir/miniconda/condabin"
-    path_changes+=":$install_dir/miniconda/bin:$install_dir/miniconda/condabin"
-  fi
-fi
-
-# pip for Python 3
-if [ ${has_target[pip]} ] && [ ! ${has_target[anaconda]} ] && [ ! ${has_target[miniconda]} ]; then
-  echo
-  echo "==========================="
-  echo "Installing pip for Python 3"
-  echo "==========================="
-  echo
-  install_packages python3-pip
+    curl $PYENV_SETUP_SCRIPT  | bash
 fi
 
 # ChromeOS specific
@@ -454,20 +362,25 @@ if [ ${has_target[vscode]} ]; then
   echo "See https://code.visualstudio.com/docs/setup/linux"
   echo "======================================================="
   echo
-  install_packages gnupg
+
+  sudo apt update
+  install_packages software-properties-common apt-transport-https curl
+  curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+  sudo add-apt-repository "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main"
+
+
   curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor >microsoft.gpg
   sudo install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/
   sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" > /etc/apt/sources.list.d/vscode.list'
 
-  install_packages apt-transport-https
-  sudo apt-get update
+  sudo apt update
   install_packages code # or code-insiders
 
   # Extensions
   if [ ${has_target[flutter]} ] || [ ${installed[flutter]} ]; then
     code --install-extension dart-code.flutter --force
   fi
-  if [ ${has_target[pip]} ] || [ ${installed[pip]} ]; then
+  if [ ${has_target[python]} ] || [ ${installed[python]} ]; then
     code --install-extension ms-python.python --force
   fi
   code --install-extension shan.code-settings-sync --force
@@ -497,6 +410,7 @@ if [ ${has_target[flutter]} ]; then
   "$install_dir/flutter/bin/flutter" doctor
 fi
 
+exec $SHELL
 end_time="$(date -u +%s)"
 elapsed="$(($end_time - $start_time))"
 echo
